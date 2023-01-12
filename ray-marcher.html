@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ray Marcher</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+      }
+      canvas {
+        display: block;
+        background-color: black;
+        width: 100% !important;
+        height: 100vh !important;
+      }
+    </style>
+  </head>
+
+  <body id="ray-marcher-container">
+    <script type="module">
+      import init from "./pkg/ray_marcher.js";
+      init().then(() => {
+        console.log("WASM Loaded");
+      });
+    </script>
+  </body>
+</html>
