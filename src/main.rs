@@ -1,5 +1,6 @@
 use ray_marcher::run;
 
-fn main() {
-    run();
+#[tokio::main]
+async fn main() {
+    run().await;
 }

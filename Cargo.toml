@@ -15,14 +15,22 @@ env_logger = "0.10"
 log = "0.4"
 wgpu = "0.14"
 
+# Enable all features of tokio for non wasm
+# TODO: Minimize features to only use required.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1.24.1", features = ["full"] }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.7"
 console_log = "0.2.0"
-wgpu = { version = "0.14", features = ["webgl"]}
+wgpu = { version = "0.14", features = ["webgl"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4.33"
-web-sys = { version = "0.3", features = [
-    "Document",
-    "Window",
-    "Element",
-]}
+web-sys = { version = "0.3", features = ["Document", "Window", "Element"] }
+tokio = { version = "1.24.1", features = [
+    "rt",
+    "io-util",
+    "time",
+    "macros",
+    "sync",
+] }
