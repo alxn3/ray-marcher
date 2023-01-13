@@ -77,7 +77,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var camera: vec3<f32> = vec3<f32>(0., 0., -4.0);
     var uv = (in.clip_position.xy / resolution.xy) * 2. - 1.;
     uv.x *= resolution.x / resolution.y;
-    var direction: vec3<f32> = vec3<f32>(uv, 1.0);
+    var direction: vec3<f32> = normalize(vec3<f32>(uv, 1.0));
 
     return vec4<f32>(ray_march(camera, direction), 1.0);
 }
