@@ -1,3 +1,4 @@
 {
-    "wgsl-analyzer.server.path": "~/.cargo/bin/wgsl_analyzer"
+    "wgsl-analyzer.server.path": "~/.cargo/bin/wgsl_analyzer",
+    "rust-analyzer.cargo.target": "wasm32-unknown-unknown",
 }

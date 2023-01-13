@@ -13,13 +13,17 @@
       canvas {
         display: block;
         background-color: black;
-        width: 100% !important;
-        height: 100vh !important;
+      }
+
+      #ray-marcher-container {
+        width: 100vw;
+        height: 100vh;
       }
     </style>
   </head>
 
-  <body id="ray-marcher-container">
+  <body>
+    <div id="ray-marcher-container"></div>
     <script type="module">
       import init from "./pkg/ray_marcher.js";
       init().then(() => {

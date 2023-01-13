@@ -1,3 +1,5 @@
+use ::cfg_if::cfg_if;
+use std::{cell::RefCell, rc::Rc};
 use wgpu::util::DeviceExt;
 use winit::{
     event::*,
@@ -5,8 +7,11 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
+cfg_if! {
+    if #[cfg(target_arch = "wasm32")] {
+        use wasm_bindgen::prelude::*;
+    }
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -30,30 +35,15 @@ impl Vertex {
     }
 }
 
+#[rustfmt::skip]
 const VERTICES: &[Vertex] = &[
-    Vertex {
-        position: [-0.0868241, 0.49240386, 0.0],
-        color: [0.5, 0.0, 0.5],
-    }, // A
-    Vertex {
-        position: [-0.49513406, 0.06958647, 0.0],
-        color: [0.5, 0.0, 0.5],
-    }, // B
-    Vertex {
-        position: [-0.21918549, -0.44939706, 0.0],
-        color: [0.5, 0.0, 0.5],
-    }, // C
-    Vertex {
-        position: [0.35966998, -0.3473291, 0.0],
-        color: [0.5, 0.0, 0.5],
-    }, // D
-    Vertex {
-        position: [0.44147372, 0.2347359, 0.0],
-        color: [0.5, 0.0, 0.5],
-    }, // E
+    Vertex { position: [-1.0,  1.0, 0.0], color: [0.5, 0.0, 0.5],},
+    Vertex { position: [-1.0, -1.0, 0.0], color: [0.5, 0.0, 0.5],},
+    Vertex { position: [ 1.0, -1.0, 0.0], color: [0.5, 0.0, 0.5],},
+    Vertex { position: [ 1.0,  1.0, 0.0], color: [0.5, 0.0, 0.5],},
 ];
 
-const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
+const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
 
 struct State {
     surface: wgpu::Surface,
@@ -271,7 +261,9 @@ pub async fn run() {
         }
     }
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let window = Rc::new(RefCell::new(
+        WindowBuilder::new().build(&event_loop).unwrap(),
+    ));
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -281,25 +273,48 @@ pub async fn run() {
         // use winit::dpi::PhysicalSize;
         // window.set_inner_size(PhysicalSize::new(450, 400));
 
+        use wasm_bindgen::JsCast;
+        use web_sys::HtmlDivElement;
         use winit::platform::web::WindowExtWebSys;
         web_sys::window()
             .and_then(|win| win.document())
-            .and_then(|doc| {
-                let dst = doc.get_element_by_id("ray-marcher-container")?;
-                let canvas = web_sys::Element::from(window.canvas());
-                dst.append_child(&canvas).ok()?;
+            .and_then(|doc| {        
+                let dst = Rc::new(RefCell::new(doc
+                    .get_element_by_id("ray-marcher-container")?
+                    .dyn_into::<HtmlDivElement>()
+                    .unwrap()));
+                let canvas = web_sys::Element::from(window.borrow().canvas());
+                cfg_if! {
+                    if #[cfg(web_sys_unstable_apis)] {
+                        use web_sys::ResizeObserver;
+                        let window = window.clone();
+                        let div = dst.clone();
+                        let closure: Closure<dyn FnMut()> = Closure::new(move || {
+                            let (width, height) = (div.borrow().client_width(), div.borrow().client_height());
+                            let factor = window.borrow().scale_factor();
+                            window
+                                .borrow()
+                                .set_inner_size(winit::dpi::LogicalSize::new(width, height).to_physical::<u32>(factor));
+                        });
+                        let observer = ResizeObserver::new(closure.as_ref().unchecked_ref()).unwrap();
+                        closure.forget();
+                        observer.observe(&dst.borrow());
+                    }
+                }
+                dst.borrow().append_child(&canvas).ok()?;
                 Some(())
             })
             .expect("Couldn't append canvas to document body.");
     }
 
-    let mut state = State::new(&window).await;
+
+    let mut state = State::new(&window.borrow()).await;
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
             ref event,
             window_id,
-        } if window_id == window.id() => {
+        } if window_id == window.borrow().id() => {
             if !state.input(event) {
                 match event {
                     WindowEvent::CloseRequested
@@ -323,7 +338,7 @@ pub async fn run() {
                 }
             }
         }
-        Event::RedrawRequested(window_id) if window_id == window.id() => {
+        Event::RedrawRequested(window_id) if window_id == window.borrow().id() => {
             state.update();
             match state.render() {
                 Ok(_) => {}
@@ -338,7 +353,7 @@ pub async fn run() {
         Event::MainEventsCleared => {
             // RedrawRequested will only trigger once, unless we manually
             // request it.
-            window.request_redraw();
+            window.borrow().request_redraw();
         }
         _ => {}
     });
