@@ -1,4 +1,4 @@
-use ::cfg_if::cfg_if;
+use cfg_if::cfg_if;
 use std::{cell::RefCell, rc::Rc};
 use wgpu::util::DeviceExt;
 use winit::{
@@ -55,6 +55,8 @@ struct State {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
+    resolution_buffer: wgpu::Buffer,
+    resolution_bind_group: wgpu::BindGroup,
 }
 
 impl State {
@@ -111,10 +113,42 @@ impl State {
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
+        let resolution_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Resolution Buffer"),
+            contents: bytemuck::cast_slice(&[size.width as f32, size.height as f32, 0.0, 0.0]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let resolution_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Resolution Buffer Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let resolution_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Resolution Buffer Bind Group"),
+            layout: &resolution_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: resolution_buffer.as_entire_binding(),
+            }],
+        });
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[
+                    &resolution_bind_group_layout,
+                ],
                 push_constant_ranges: &[],
             });
 
@@ -185,6 +219,8 @@ impl State {
             vertex_buffer,
             index_buffer,
             num_indices,
+            resolution_buffer,
+            resolution_bind_group,
         }
     }
 
@@ -195,6 +231,11 @@ impl State {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
+            self.queue.write_buffer(
+                &self.resolution_buffer,
+                0,
+                bytemuck::cast_slice(&[self.size.width as f32, self.size.height as f32, 0.0, 0.0]),
+            );
         }
     }
 
@@ -237,6 +278,7 @@ impl State {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(0, &self.resolution_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
