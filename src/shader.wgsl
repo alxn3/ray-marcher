@@ -21,6 +21,8 @@ fn vs_main(
 
 @group(0) @binding(0)
 var<uniform> resolution: vec4<f32>;
+@group(0) @binding(1)
+var<uniform> time: vec4<f32>;
 
 fn distance_from_sphere(p: vec3<f32>, c: vec3<f32>, r: f32) -> f32 {
     return length(p - c) - r;
@@ -33,7 +35,10 @@ fn DE(p: vec3<f32>) -> f32 {
     var p = a - floor(a / b) * b - vec3(c * .5);
     var dst: f32;
     dst = distance_from_sphere(p, vec3<f32>(0.0), 1.0);
-    return dst;
+
+    var displacement = sin(5.0 * p.x + time.x) * cos(5.0 * p.y + time.x) * cos(5.0 * p.z + time.x) * 0.25;
+
+    return dst + displacement;
 }
 
 fn calc_normal(p: vec3<f32>) -> vec3<f32> {

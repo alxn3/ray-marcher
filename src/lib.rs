@@ -6,6 +6,7 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+use instant::Instant;
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
@@ -56,7 +57,9 @@ struct State {
     index_buffer: wgpu::Buffer,
     num_indices: u32,
     resolution_buffer: wgpu::Buffer,
-    resolution_bind_group: wgpu::BindGroup,
+    time: Instant,
+    time_buffer: wgpu::Buffer,
+    util_bind_group: wgpu::BindGroup,
 }
 
 impl State {
@@ -119,7 +122,15 @@ impl State {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let resolution_bind_group_layout =
+        let time = Instant::now();
+
+        let time_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Time Buffer"),
+            contents: bytemuck::cast_slice(&[time.elapsed().as_secs_f32(), 0.0, 0.0, 0.0]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let util_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Resolution Buffer Bind Group Layout"),
                 entries: &[wgpu::BindGroupLayoutEntry {
@@ -131,15 +142,28 @@ impl State {
                         min_binding_size: None,
                     },
                     count: None,
+                }, wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 }],
             });
 
-        let resolution_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let util_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Resolution Buffer Bind Group"),
-            layout: &resolution_bind_group_layout,
+            layout: &util_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: resolution_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: time_buffer.as_entire_binding(),
             }],
         });
 
@@ -147,7 +171,7 @@ impl State {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
-                    &resolution_bind_group_layout,
+                    &util_bind_group_layout,
                 ],
                 push_constant_ranges: &[],
             });
@@ -219,8 +243,10 @@ impl State {
             vertex_buffer,
             index_buffer,
             num_indices,
+            time,
+            time_buffer,
             resolution_buffer,
-            resolution_bind_group,
+            util_bind_group,
         }
     }
 
@@ -243,7 +269,13 @@ impl State {
         false
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self) {
+        self.queue.write_buffer(
+            &self.time_buffer,
+            0,
+            bytemuck::cast_slice(&[self.time.elapsed().as_secs_f32(), 0.0, 0.0, 0.0]),
+        );
+    }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
@@ -278,7 +310,7 @@ impl State {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.resolution_bind_group, &[]);
+            render_pass.set_bind_group(0, &self.util_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
