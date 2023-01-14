@@ -56,9 +56,8 @@ struct State {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
-    resolution_buffer: wgpu::Buffer,
     time: Instant,
-    time_buffer: wgpu::Buffer,
+    util_buffer: wgpu::Buffer,
     util_bind_group: wgpu::BindGroup,
 }
 
@@ -116,17 +115,11 @@ impl State {
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
-        let resolution_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Resolution Buffer"),
-            contents: bytemuck::cast_slice(&[size.width as f32, size.height as f32, 0.0, 0.0]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
         let time = Instant::now();
 
-        let time_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Time Buffer"),
-            contents: bytemuck::cast_slice(&[time.elapsed().as_secs_f32(), 0.0, 0.0, 0.0]),
+        let util_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Resolution Buffer"),
+            contents: bytemuck::cast_slice(&[size.width as f32, size.height as f32, time.elapsed().as_secs_f32(), 0.0]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -142,15 +135,6 @@ impl State {
                         min_binding_size: None,
                     },
                     count: None,
-                }, wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
                 }],
             });
 
@@ -159,11 +143,7 @@ impl State {
             layout: &util_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: resolution_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: time_buffer.as_entire_binding(),
+                resource: util_buffer.as_entire_binding(),
             }],
         });
 
@@ -244,8 +224,7 @@ impl State {
             index_buffer,
             num_indices,
             time,
-            time_buffer,
-            resolution_buffer,
+            util_buffer,
             util_bind_group,
         }
     }
@@ -258,7 +237,7 @@ impl State {
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
             self.queue.write_buffer(
-                &self.resolution_buffer,
+                &self.util_buffer,
                 0,
                 bytemuck::cast_slice(&[self.size.width as f32, self.size.height as f32]),
             );
@@ -271,8 +250,8 @@ impl State {
 
     fn update(&mut self) {
         self.queue.write_buffer(
-            &self.time_buffer,
-            0,
+            &self.util_buffer,
+            8,
             bytemuck::cast_slice(&[self.time.elapsed().as_secs_f32()]),
         );
     }

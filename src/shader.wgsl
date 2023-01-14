@@ -19,10 +19,13 @@ fn vs_main(
 
 // Fragment shader
 
+struct Util {
+    res : vec2<f32>,
+    time : f32,
+}
+
 @group(0) @binding(0)
-var<uniform> resolution: vec4<f32>;
-@group(0) @binding(1)
-var<uniform> time: vec4<f32>;
+var<uniform> util: Util;
 
 fn distance_from_sphere(p: vec3<f32>, c: vec3<f32>, r: f32) -> f32 {
     return length(p - c) - r;
@@ -36,7 +39,7 @@ fn DE(p: vec3<f32>) -> f32 {
     var dst: f32;
     dst = distance_from_sphere(p, vec3<f32>(0.0), 1.0);
 
-    var displacement = sin(5.0 * p.x + time.x) * cos(5.0 * p.y + time.x) * cos(5.0 * p.z + time.x) * 0.25;
+    var displacement = sin(5.0 * p.x + util.time) * cos(5.0 * p.y + util.time) * cos(5.0 * p.z + util.time) * 0.25;
 
     return dst + displacement;
 }
@@ -91,8 +94,8 @@ fn ray_march(origin: vec3<f32>, direction: vec3<f32>) -> MarchResult {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var camera: vec3<f32> = vec3<f32>(0., 0., -4.0);
-    var uv = (in.clip_position.xy / resolution.xy) * 2. - 1.;
-    uv.x *= resolution.x / resolution.y;
+    var uv = (in.clip_position.xy / util.res) * 2. - 1.;
+    uv.x *= util.res.x / util.res.y;
     var direction: vec3<f32> = normalize(vec3<f32>(uv, 1.0));
 
     var res = ray_march(camera, direction);
