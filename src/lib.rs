@@ -260,7 +260,7 @@ impl State {
             self.queue.write_buffer(
                 &self.resolution_buffer,
                 0,
-                bytemuck::cast_slice(&[self.size.width as f32, self.size.height as f32, 0.0, 0.0]),
+                bytemuck::cast_slice(&[self.size.width as f32, self.size.height as f32]),
             );
         }
     }
@@ -273,7 +273,7 @@ impl State {
         self.queue.write_buffer(
             &self.time_buffer,
             0,
-            bytemuck::cast_slice(&[self.time.elapsed().as_secs_f32(), 0.0, 0.0, 0.0]),
+            bytemuck::cast_slice(&[self.time.elapsed().as_secs_f32()]),
         );
     }
 
@@ -347,19 +347,16 @@ pub async fn run() {
         // use winit::dpi::PhysicalSize;
         // window.set_inner_size(PhysicalSize::new(450, 400));
 
-        use wasm_bindgen::JsCast;
-        use web_sys::HtmlDivElement;
         use winit::platform::web::WindowExtWebSys;
         web_sys::window()
             .and_then(|win| win.document())
             .and_then(|doc| {        
                 let dst = Rc::new(RefCell::new(doc
-                    .get_element_by_id("ray-marcher-container")?
-                    .dyn_into::<HtmlDivElement>()
-                    .unwrap()));
+                    .get_element_by_id("ray-marcher-container")?));
                 let canvas = web_sys::Element::from(window.borrow().canvas());
                 cfg_if! {
                     if #[cfg(web_sys_unstable_apis)] {
+                        use wasm_bindgen::JsCast;
                         use web_sys::ResizeObserver;
                         let window = window.clone();
                         let div = dst.clone();
