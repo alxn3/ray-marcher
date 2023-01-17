@@ -1,0 +1,12 @@
+{
+  "name": "ray-marcher",
+  "version": "0.1.0",
+  "files": [
+    "ray_marcher_bg.wasm",
+    "ray_marcher.js",
+    "ray_marcher.d.ts"
+  ],
+  "module": "ray_marcher.js",
+  "types": "ray_marcher.d.ts",
+  "sideEffects": false
+}
