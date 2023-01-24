@@ -4,14 +4,6 @@ use glam::{EulerRot, Mat4, Quat, Vec3, Vec4};
 use instant::Duration;
 use winit::event::{ElementState, VirtualKeyCode};
 
-#[rustfmt::skip]
-pub const OPENGL_TO_WGPU_MATRIX: Mat4 = Mat4::from_cols_array(&[
-    1.0, 0.0, 0.0, 0.0, 
-    0.0, 1.0, 0.0, 0.0, 
-    0.0, 0.0, 0.5, 0.0, 
-    0.0, 0.0, 0.5, 1.0,
-]);
-
 #[derive(Debug)]
 pub struct View {
     pub position: Vec3,
@@ -31,34 +23,10 @@ impl View {
     }
 
     pub fn calc_matrix(&self) -> Mat4 {
-        let mut view = Mat4::from_rotation_translation(
+        Mat4::from_rotation_translation(
             Quat::from_euler(EulerRot::YXZ, self.yaw, self.pitch, self.roll),
             self.position,
-        );
-        view
-    }
-}
-
-pub struct Projection {
-    pub aspect_ratio: f32,
-    pub fov_y: f32,
-    pub z_near: f32,
-    pub z_far: f32,
-}
-
-impl Projection {
-    pub fn new(aspect_ratio: f32, fov_y: f32, near: f32, far: f32) -> Self {
-        Self {
-            aspect_ratio,
-            fov_y,
-            z_near: near,
-            z_far: far,
-        }
-    }
-
-    pub fn get_projection_matrix(&self) -> glam::Mat4 {
-        OPENGL_TO_WGPU_MATRIX
-            * glam::Mat4::perspective_rh_gl(self.fov_y, self.aspect_ratio, self.z_near, self.z_far)
+        )
     }
 }
 
@@ -86,7 +54,6 @@ pub struct CameraUniform {
 }
 pub struct Camera {
     view: View,
-    projection: Projection,
     movement_values: MovementValues,
     rotation_values: RotationValues,
     zoom: f32,
@@ -96,13 +63,12 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn new(view: View, projection: Projection, speed: f32, sensitivity: f32) -> Self {
+    pub fn new(view: View, speed: f32, sensitivity: f32) -> Self {
         let position = view.position.extend(1.0).into();
         let view_proj = (view.calc_matrix()).into();
 
         Self {
             view,
-            projection,
             movement_values: MovementValues {
                 forward: 0.0,
                 backward: 0.0,
@@ -209,9 +175,5 @@ impl Camera {
         self.view.yaw = self.view.yaw % (2.0 * PI);
         self.view.pitch = self.view.pitch.clamp(-PI / 2.0, PI / 2.0);
         self.view.roll = self.view.roll % (2.0 * PI);
-    }
-
-    pub fn update_aspect_ratio(&mut self, aspect_ratio: f32) {
-        self.projection.aspect_ratio = aspect_ratio;
     }
 }

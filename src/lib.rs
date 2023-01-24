@@ -133,7 +133,6 @@ impl State {
 
         let camera = camera::Camera::new(
             camera::View::new(Vec3::new(0.0, 0.0, 0.0), 0.0, 0.0, 0.0),
-            camera::Projection::new(45.0, size.width as f32 / size.height as f32, 0.1, 100.0),
             2.0,
             0.4,
         );
@@ -270,8 +269,6 @@ impl State {
                 0,
                 bytemuck::cast_slice(&[self.size.width as f32, self.size.height as f32]),
             );
-            self.camera
-                .update_aspect_ratio(self.size.width as f32 / self.size.height as f32);
         }
     }
 
