@@ -16,6 +16,7 @@ log = "0.4"
 wgpu = "0.14"
 bytemuck = { version = "1.12", features = ["derive"] }
 instant = "0.1.12"
+glam = { version = "0.22.0", features = ["bytemuck"] }
 
 # Enable all features of tokio for non wasm
 # TODO: Minimize features to only use required.

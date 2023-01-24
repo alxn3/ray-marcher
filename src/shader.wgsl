@@ -22,6 +22,8 @@ fn vs_main(
 struct Util {
     res: vec2<f32>,
     time: f32,
+    position: vec4<f32>,
+    view_proj: mat4x4<f32>,
 }
 
 @group(0) @binding(0)
@@ -115,22 +117,26 @@ fn de_tetrahedron(p: vec4<f32>, r: f32) -> f32 {
 }
 
 fn DE(p: vec4<f32>) -> f32 {
-    var c = 2.5 * sin(0.1 * util.time) * cos(0.1 * util.time) + 4.0;
+    var c = 3.5 * sin(0.1 * util.time) * cos(0.1 * util.time) + 5.0;
     var a = p + vec4(c * .5);
+    a.x += c/2.0;
+    a.y += c/2.0;
+
     var b = vec4(c);
     var p = a - floor(a / b) * b - vec4(c * .5);
     var dst: f32;
-    // dst = de_sphere(p, vec3<f32>(0.0), .5);
-
-    var size = 1.95 * sin(0.2 * util.time) * cos(0.2 * util.time) + 2.1;
-    var p = p;
-    for (var i = 0; i < 8; i = i + 1) {
-        p = fd_sierpinski(p);
-        p = fd_scale_translate(p, 2.0, vec3<f32>(-size));
-    }
-    dst = de_tetrahedron(p, size);
-
     var displacement = sin(5.0 * p.x + util.time) * cos(5.0 * p.y + util.time) * sin(5.0 * p.z + util.time) * cos(5.0 * p.z + util.time) * 0.5;
+    dst = de_sphere(p, vec3<f32>(0.0), .5) + displacement;
+
+    // var size = 1.95 * sin(0.2 * util.time) * cos(0.2 * util.time) + 2.1;
+    // var p = p;
+    // for (var i = 0; i < 4; i = i + 1) {
+    //     p = fd_sierpinski(p);
+    //     p = fd_scale_translate(p, 2.0, vec3<f32>(-size));
+    // }
+    // dst = de_tetrahedron(p, size);
+    dst = min(dst, de_box_frame(p, vec3<f32>(1.5), 0.1));
+
 
     return dst;
 }
@@ -182,38 +188,15 @@ fn ray_march(origin: vec4<f32>, direction: vec4<f32>) -> MarchResult {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    var camera = vec4<f32>(-0., -0., -10.0 + util.time * 0.5, 1.0);
-    camera.x = 2.5 * sin(0.1 * util.time) * cos(0.1 * util.time) + 4.0;
-    camera.x /= 2.0;
-    camera.y = camera.x;
     var uv = (in.clip_position.xy / util.res) * 2. - 1.;
     uv.x *= util.res.x / util.res.y;
     var direction = normalize(vec4<f32>(uv, 1.0, 0.0));
+    direction = mat4x4<f32>(util.view_proj) * direction;
 
 
-    // rotates direction
-    var rot = mat4x4<f32>(
-        vec4<f32>(cos(util.time * 0.1), 0.0, -sin(util.time * 0.1), 0.0),
-        vec4<f32>(0.0, 1.0, 0.0, 0.0),
-        vec4<f32>(sin(util.time * 0.1), 0.0, cos(util.time * 0.1), 0.0),
-        vec4<f32>(0.0, 0.0, 0.0, 1.0)
-    );
-    direction = rot * direction * 0.5;
-    
+    var res = ray_march(util.position, direction);
 
-    // Make view spin around the z axis and move randomly
-    var rot = mat4x4<f32>(
-        vec4<f32>(cos(util.time * 0.1), -sin(util.time * 0.1), 0.0, 0.0),
-        vec4<f32>(sin(util.time * 0.1), cos(util.time * 0.1), 0.0, 0.0),
-        vec4<f32>(0.0, 0.0, 1.0, 0.0),
-        vec4<f32>(0.0, 0.0, 0.0, 1.0)
-    );
-    direction = rot * direction;
-
-
-    var res = ray_march(camera, direction);
-
-    var normal = calc_normal(camera + direction * res.total_distance, 0.001);
+    var normal = calc_normal(util.position + direction * res.total_distance, 0.001);
 
     var color = (normal.yxz * 0.5 + 0.5);
 

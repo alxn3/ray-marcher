@@ -1,12 +1,14 @@
 use cfg_if::cfg_if;
+use glam::{Mat4, Vec3, Vec4};
+use instant::Instant;
 use std::{cell::RefCell, rc::Rc};
 use wgpu::util::DeviceExt;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    window::{CursorGrabMode, Window, WindowBuilder},
 };
-use instant::Instant;
+mod camera;
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
@@ -46,6 +48,16 @@ const VERTICES: &[Vertex] = &[
 
 const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Globals {
+    resolution: [f32; 2],
+    time: f32,
+    _padding: f32,
+    position: Vec4,
+    view_proj: Mat4,
+}
+
 struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -57,8 +69,10 @@ struct State {
     index_buffer: wgpu::Buffer,
     num_indices: u32,
     time: Instant,
-    util_buffer: wgpu::Buffer,
-    util_bind_group: wgpu::BindGroup,
+    globals_buffer: wgpu::Buffer,
+    globals_bind_group: wgpu::BindGroup,
+    camera: camera::Camera,
+    mouse_pressed: bool,
 }
 
 impl State {
@@ -117,13 +131,28 @@ impl State {
 
         let time = Instant::now();
 
-        let util_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Resolution Buffer"),
-            contents: bytemuck::cast_slice(&[size.width as f32, size.height as f32, time.elapsed().as_secs_f32(), 0.0]),
+        let camera = camera::Camera::new(
+            camera::View::new(Vec3::new(0.0, 0.0, 0.0), 0.0, 0.0, 0.0),
+            camera::Projection::new(45.0, size.width as f32 / size.height as f32, 0.1, 100.0),
+            2.0,
+            0.4,
+        );
+
+        let globals = Globals {
+            resolution: [size.width as f32, size.height as f32],
+            time: 0.0,
+            _padding: 0.0,
+            position: camera.uniform.position,
+            view_proj: camera.uniform.view_proj,
+        };
+
+        let globals_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Globals Buffer"),
+            contents: bytemuck::cast_slice(&[globals]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let util_bind_group_layout =
+        let globals_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Resolution Buffer Bind Group Layout"),
                 entries: &[wgpu::BindGroupLayoutEntry {
@@ -138,21 +167,19 @@ impl State {
                 }],
             });
 
-        let util_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let globals_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Resolution Buffer Bind Group"),
-            layout: &util_bind_group_layout,
+            layout: &globals_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: util_buffer.as_entire_binding(),
+                resource: globals_buffer.as_entire_binding(),
             }],
         });
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[
-                    &util_bind_group_layout,
-                ],
+                bind_group_layouts: &[&globals_bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -224,8 +251,10 @@ impl State {
             index_buffer,
             num_indices,
             time,
-            util_buffer,
-            util_bind_group,
+            globals_buffer,
+            globals_bind_group,
+            camera,
+            mouse_pressed: false,
         }
     }
 
@@ -237,23 +266,63 @@ impl State {
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
             self.queue.write_buffer(
-                &self.util_buffer,
+                &self.globals_buffer,
                 0,
                 bytemuck::cast_slice(&[self.size.width as f32, self.size.height as f32]),
             );
+            self.camera
+                .update_aspect_ratio(self.size.width as f32 / self.size.height as f32);
         }
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
-        false
+        // process keyboard events for camera
+        match event {
+            WindowEvent::KeyboardInput {
+                input:
+                    KeyboardInput {
+                        virtual_keycode: Some(key),
+                        state,
+                        ..
+                    },
+                ..
+            } => self.camera.process_keyboard(*key, *state),
+            WindowEvent::MouseWheel { delta, .. } => {
+                self.camera.process_zoom(match delta {
+                    MouseScrollDelta::LineDelta(_, y) => *y,
+                    MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
+                });
+                true
+            }
+            WindowEvent::MouseInput {
+                button: MouseButton::Left,
+                state,
+                ..
+            } => {
+                self.mouse_pressed = *state == ElementState::Pressed;
+                true
+            }
+            _ => false,
+        }
     }
 
-    fn update(&mut self) {
+    fn update(&mut self, dt: std::time::Duration) {
         self.queue.write_buffer(
-            &self.util_buffer,
+            &self.globals_buffer,
             8,
             bytemuck::cast_slice(&[self.time.elapsed().as_secs_f32()]),
         );
+        self.queue.write_buffer(
+            &self.globals_buffer,
+            16,
+            bytemuck::cast_slice(&[self.camera.uniform.position]),
+        );
+        self.queue.write_buffer(
+            &self.globals_buffer,
+            32,
+            bytemuck::cast_slice(&[self.camera.uniform.view_proj]),
+        );
+        self.camera.update(dt);
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -289,7 +358,7 @@ impl State {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.util_bind_group, &[]);
+            render_pass.set_bind_group(0, &self.globals_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
@@ -329,7 +398,7 @@ pub async fn run() {
         use winit::platform::web::WindowExtWebSys;
         web_sys::window()
             .and_then(|win| win.document())
-            .and_then(|doc| {        
+            .and_then(|doc| {
                 let dst = Rc::new(RefCell::new(doc
                     .get_element_by_id("ray-marcher-container")?));
                 let canvas = web_sys::Element::from(window.borrow().canvas());
@@ -357,10 +426,29 @@ pub async fn run() {
             .expect("Couldn't append canvas to document body.");
     }
 
-
     let mut state = State::new(&window.borrow()).await;
-
+    let mut last_render_time = instant::Instant::now();
     event_loop.run(move |event, _, control_flow| match event {
+        Event::DeviceEvent {
+            event: DeviceEvent::MouseMotion { delta },
+            ..
+        } => state.camera.process_mouse(delta.0 as f32, delta.1 as f32),
+        // Mouse Click
+        Event::WindowEvent {
+            event: WindowEvent::MouseInput { state, button, .. },
+            ..
+        } => {
+            if button == MouseButton::Left {
+                window
+                    .borrow()
+                    .set_cursor_grab(CursorGrabMode::Confined)
+                    .or_else(|_e| window.borrow().set_cursor_grab(CursorGrabMode::Locked))
+                    .unwrap();
+            }
+            if button == MouseButton::Right {
+                window.borrow().set_cursor_grab(CursorGrabMode::None).unwrap();
+            }
+        }
         Event::WindowEvent {
             ref event,
             window_id,
@@ -389,7 +477,10 @@ pub async fn run() {
             }
         }
         Event::RedrawRequested(window_id) if window_id == window.borrow().id() => {
-            state.update();
+            let now = instant::Instant::now();
+            let dt = now - last_render_time;
+            last_render_time = now;
+            state.update(dt);
             match state.render() {
                 Ok(_) => {}
                 // Reconfigure the surface if lost
