@@ -440,6 +440,8 @@ pub async fn run() {
                     .borrow()
                     .set_cursor_grab(CursorGrabMode::Confined)
                     .or_else(|_e| window.borrow().set_cursor_grab(CursorGrabMode::Locked))
+                    // Or just don't grab the cursor
+                    .or_else(|_e| window.borrow().set_cursor_grab(CursorGrabMode::None))
                     .unwrap();
             }
             if button == MouseButton::Right {
